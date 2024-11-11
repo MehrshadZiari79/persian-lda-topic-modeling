@@ -10,10 +10,10 @@ from dadmatools.normalizer import Normalizer
 import dadmatools.pipeline.language as language
 
 # Define functions for text cleaning, normalization, and lemmatization
+
 def clean_text(text):
     """Remove punctuation and convert text to lowercase."""
-    text = re.sub(r'[^\w\s]', '', text)  # Remove punctuation
-    return text.lower()
+    return re.sub(r'[^\w\s]', '', text).lower()
 
 def normalize_text(text):
     """Normalize text using DadmaTools' Normalizer."""
@@ -23,13 +23,10 @@ def normalize_text(text):
 def lemmatize_text(text, nlp):
     """Lemmatize text using DadmaTools pipeline."""
     doc = nlp(text)  # Process the text with DadmaTools
-    lemmatized_tokens = []
-
-    # Extract lemmatized tokens from the 'tokens' list in 'sentences'
-    for sentence in doc.get('sentences', []):
-        for token in sentence.get('tokens', []):
-            lemmatized_tokens.append(token['lemma'])
-
+    lemmatized_tokens = [
+        token['lemma'] for sentence in doc.get('sentences', [])
+        for token in sentence.get('tokens', [])
+    ]
     return ' '.join(lemmatized_tokens)
 
 def preprocess_text(text, nlp):
@@ -39,8 +36,7 @@ def preprocess_text(text, nlp):
     return lemmatize_text(text, nlp)
 
 # Initialize the DadmaTools pipeline for lemmatization
-pips = 'lem'
-nlp = language.Pipeline(pips)
+nlp_pipeline = language.Pipeline('lem')
 
 # Start the timer to measure total processing time
 start_time = time.time()
@@ -49,10 +45,10 @@ start_time = time.time()
 snpfood_sa = SnappfoodSentiment()
 print("Dataset loaded.")
 
-# Extract and preprocess  comments and labels
+# Extract and preprocess comments and labels
 comments, labels = [], []
-for i, item in enumerate(snpfood_sa.train):
-    comment = preprocess_text(item['comment'], nlp)  # Preprocess each comment
+for item in snpfood_sa.train:
+    comment = preprocess_text(item['comment'], nlp_pipeline)  # Preprocess each comment
     comments.append(comment)
     labels.append(item['label'])
 print("Comments and labels extracted and preprocessed.")
@@ -103,7 +99,7 @@ new_comments = [
 ]
 
 # Preprocess new comments
-new_comments = [preprocess_text(comment, nlp) for comment in new_comments]
+new_comments = [preprocess_text(comment, nlp_pipeline) for comment in new_comments]
 print("New comments preprocessed.")
 
 # Predict sentiment for the new comments
