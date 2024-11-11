@@ -14,6 +14,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
 # Function to terminate all running chromedriver.exe processes
 def terminate_existing_drivers():
+    """Terminate any existing chromedriver processes to avoid conflicts."""
     for proc in psutil.process_iter(['pid', 'name']):
         if proc.info['name'] == 'chromedriver.exe':
             try:
@@ -34,9 +35,9 @@ start_time = time.time()
 logging.basicConfig(filename='scraping_errors.log', level=logging.ERROR)
 
 # Configure Chrome WebDriver
-chrome_driver_path = r'E:\payan\packages\chromedriver-win64\chromedriver.exe'  # Replace with your Chrome WebDriver path
+chrome_driver_path = r'E:\payan\packages\chromedriver-win64\chromedriver.exe'  # Update with correct path
 chrome_options = Options()
-chrome_options.add_argument("--headless")  # Remove this option for debugging
+chrome_options.add_argument("--headless")  # Use headless mode for faster scraping
 chrome_options.add_argument("--window-size=1920,1080")
 chrome_options.add_argument("--disable-gpu")
 chrome_options.add_experimental_option("prefs", {"profile.managed_default_content_settings.javascript": 2})  # Disable JavaScript
@@ -44,18 +45,18 @@ chrome_options.add_experimental_option("prefs", {"profile.managed_default_conten
 # Base URL pattern for room pages on Jabama
 base_url = "https://www.jabama.com/stay/apartment-"
 
-# Define the range of page numbers you want to scrape
+# Define the range of pages to scrape
 start_page = 340000
 end_page = 350000
 
-# Function to scrape a single page
 def scrape_page(driver, page_num):
+    """Scrape data from a single page."""
     data = []
     url = base_url + str(page_num)
     driver.get(url)
 
-    # Wait for the comments section to be loaded
     try:
+        # Wait for the comments section to load
         WebDriverWait(driver, 30).until(
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.comment-card__content p.comment-card__text"))
         )
@@ -63,29 +64,14 @@ def scrape_page(driver, page_num):
         print(f"Timeout loading page {url}")
         return data
 
-    # Extract location
-    location = "N/A"
-    try:
-        location_element = driver.find_element(By.CSS_SELECTOR, "strong.city-province")
-        location_text = location_element.text.strip()
-        location = location_text.split('،')[-1].strip()  # Extracts the city name
-        print(f"Location found: {location}")
-    except NoSuchElementException:
-        print(f"Location element not found on page {page_num}")
-
-    # Extract room type
-    room_type = "N/A"
-    try:
-        room_type_element = driver.find_element(By.CSS_SELECTOR, "h2.pdp-host-info-content__title")
-        room_type = room_type_element.text.strip()
-        print(f"Room type found: {room_type}")
-    except NoSuchElementException:
-        print(f"Room type element not found on page {page_num}")
+    # Extract location and room type
+    location = extract_element(driver, "strong.city-province", "city-province", "N/A")
+    room_type = extract_element(driver, "h2.pdp-host-info-content__title", "room type", "N/A")
 
     # Scroll the page to load all comments
-    for _ in range(5):  # Adjust the number of scrolls as needed
+    for _ in range(5):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)  # Wait for content to load
+        time.sleep(2)
 
     # Extract comments
     comments_containers = driver.find_elements(By.CSS_SELECTOR, "div.comment-card__content p.comment-card__text")
@@ -93,64 +79,67 @@ def scrape_page(driver, page_num):
 
     for container in comments_containers:
         try:
-            text = container.text.strip()  # Extract the comment text
-            if text:  # Only add non-empty comments
+            text = container.text.strip()
+            if text:
                 data.append({'Page': page_num, 'Location': location, 'Room Type': room_type, 'Comment': text})
-                print(f"Saved comment from page {page_num}: {text}")
         except Exception as e:
-            print(f"Error extracting comment on page {page_num}: {str(e)}")
+            print(f"Error extracting comment on page {page_num}: {e}")
             continue
 
     return data
 
-# Function to scrape pages using a single WebDriver instance
+def extract_element(driver, selector, element_type, default_value):
+    """Extract the element text from the page or return default value."""
+    try:
+        element = driver.find_element(By.CSS_SELECTOR, selector)
+        return element.text.strip().split('،')[-1].strip() if element_type == "city-province" else element.text.strip()
+    except NoSuchElementException:
+        print(f"{element_type} not found on page")
+        return default_value
+
 def scrape_pages(driver, pages):
+    """Scrape a list of pages using a single driver."""
     all_data = []
     for page_num in pages:
         data = scrape_page(driver, page_num)
         all_data.extend(data)
     return all_data
 
-# Adjust the number of threads to 30
-num_workers = 30
-pages_per_worker = (end_page - start_page + 1) // num_workers
-
-# Function to initialize WebDriver and scrape pages in a thread
 def worker(pages):
+    """Worker function to initialize WebDriver and scrape pages."""
     driver = webdriver.Chrome(service=Service(chrome_driver_path), options=chrome_options)
     try:
         return scrape_pages(driver, pages)
     finally:
         driver.quit()
 
-# Divide the pages among workers
-page_ranges = [range(start_page + i * pages_per_worker, start_page + (i + 1) * pages_per_worker)
-               for i in range(num_workers)]
+# Divide pages among workers
+num_workers = 30
+pages_per_worker = (end_page - start_page + 1) // num_workers
+page_ranges = [range(start_page + i * pages_per_worker, start_page + (i + 1) * pages_per_worker) for i in range(num_workers)]
 
-# Use ThreadPoolExecutor to run scraping concurrently
+# Use ThreadPoolExecutor for concurrent scraping
 all_data = []
 with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
     results = executor.map(worker, page_ranges)
 
-    # Collect and batch write data
-    batch_size = 750  # Adjust batch size as needed
+    # Batch write data to CSV
+    batch_size = 750
     batch_data = []
     for result in results:
         batch_data.extend(result)
         if len(batch_data) >= batch_size:
-            # Convert data to DataFrame and write to CSV in batches
             df = pd.DataFrame(batch_data)
             df.to_csv('cm_jabama.csv', mode='a', header=not os.path.exists('cm_jabama.csv'), index=False)
-            batch_data = []  # Reset batch data
+            batch_data = []
 
-    # Write any remaining data
     if batch_data:
         df = pd.DataFrame(batch_data)
         df.to_csv('cm_jabama.csv', mode='a', header=not os.path.exists('cm_jabama.csv'), index=False)
 
 print(f"Scraping completed and data saved to 'cm_jabama.csv'")
 
-# End the timer
+# End the timer and print execution time
 end_time = time.time()
 execution_time = end_time - start_time
 print(f"Total execution time: {execution_time} seconds")
