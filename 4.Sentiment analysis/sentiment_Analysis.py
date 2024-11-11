@@ -11,30 +11,33 @@ from dadmatools.datasets import SnappfoodSentiment
 
 # Define text cleaning function to remove punctuation
 def clean_text(text):
+    """Clean text by removing punctuation and converting it to lowercase."""
     if not isinstance(text, str):
         text = ''  # Handle non-string values
-    text = re.sub(r'[^\w\s]', '', text)  # Remove punctuation
-    return text
+    return re.sub(r'[^\w\s]', '', text).lower()
 
 # Define normalization function using DadmaTools
 def normalize_text(text):
+    """Normalize text using DadmaTools' Normalizer."""
     normalizer = Normalizer()
     return normalizer.normalize(text)
 
 # Preprocess text by cleaning and normalizing
 def preprocess_text(text):
+    """Apply text cleaning and normalization to the input text."""
     text = clean_text(text)
-    text = normalize_text(text)
-    return text
+    return normalize_text(text)
 
 # Function to log and time the start of a task
 def time_part(part_name):
+    """Log the start of a task and return the start time."""
     start = time.time()
     print(f"\nStarting {part_name}...")
     return start
 
 # Function to log and display the elapsed time for a task
 def end_part(start_time, part_name):
+    """Log the end of a task and display the elapsed time."""
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"{part_name} completed in {elapsed_time:.2f} seconds.")
@@ -49,12 +52,8 @@ end_part(load_data_start, "Loading Data")
 
 # Extract comments and labels from dataset, applying preprocessing
 data_prep_start = time_part("Preparing Data")
-comments = []
-labels = []
-for item in snpfood_sa.train:
-    comment = preprocess_text(item['comment'])  # Preprocess each comment
-    comments.append(comment)
-    labels.append(item['label'])
+comments = [preprocess_text(item['comment']) for item in snpfood_sa.train]
+labels = [item['label'] for item in snpfood_sa.train]
 X_train, X_test, y_train, y_test = train_test_split(comments, labels, test_size=0.2, random_state=42)
 end_part(data_prep_start, "Preparing Data")
 
@@ -96,8 +95,7 @@ end_part(file_loading_start, "Loading Comments from CSV")
 
 # Preprocess comments from CSV file
 preprocessing_start = time_part("Preprocessing Comments")
-comments_from_csv = df['comment'].tolist()
-processed_comments = [preprocess_text(comment) for comment in comments_from_csv]
+processed_comments = [preprocess_text(comment) for comment in df['comment'].tolist()]
 end_part(preprocessing_start, "Preprocessing Comments")
 
 # Predict sentiment for each preprocessed comment
@@ -114,7 +112,7 @@ end_part(save_results_start, "Saving Results")
 
 # Print results with numbering for each comment
 print("\nSentiment Analysis Results:")
-for index, (comment, prediction) in enumerate(zip(comments_from_csv, predictions), start=1):
+for index, (comment, prediction) in enumerate(zip(df['comment'], predictions), start=1):
     print(f"{index}. Comment: {comment}\n   Sentiment: {prediction}\n")
 
 # Display the total time spent
