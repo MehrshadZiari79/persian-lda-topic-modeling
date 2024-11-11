@@ -14,19 +14,22 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Define text cleaning and normalization functions
 def clean_text(text):
+    """Remove punctuation and convert text to lowercase."""
     text = re.sub(r'[^\w\s]', '', text)  # Remove punctuation
     text = text.lower()  # Convert to lowercase
     return text
 
-def normalize_text(text):
-    normalizer = Normalizer()
+def normalize_text(text, normalizer):
+    """Normalize the text using the provided normalizer."""
     return normalizer.normalize(text)
 
-def preprocess_text(text):
+def preprocess_text(text, normalizer):
+    """Preprocess the text by cleaning and normalizing it."""
     text = clean_text(text)
-    text = normalize_text(text)
+    text = normalize_text(text, normalizer)
     return text
 
+# Start processing
 logging.info('Loading dataset...')
 start_time = time.time()
 
@@ -35,7 +38,10 @@ snpfood_sa = SnappfoodSentiment()
 
 logging.info(f'Dataset loaded in {time.time() - start_time:.2f} seconds.')
 
-# Extract comments and labels
+# Initialize normalizer
+normalizer = Normalizer()
+
+# Extract and preprocess comments and labels
 logging.info('Extracting and preprocessing comments and labels...')
 start_time = time.time()
 
@@ -45,7 +51,7 @@ labels = []
 for item in snpfood_sa.train:
     comment = item['comment']
     label = item['label']
-    comment = preprocess_text(comment)  # Preprocess comment
+    comment = preprocess_text(comment, normalizer)  # Preprocess comment
     comments.append(comment)
     labels.append(label)
 
@@ -59,7 +65,7 @@ X_train, X_test, y_train, y_test = train_test_split(comments, labels, test_size=
 
 logging.info(f'Dataset split in {time.time() - start_time:.2f} seconds.')
 
-# Create a pipeline
+# Create and train the pipeline
 logging.info('Creating and training the pipeline...')
 start_time = time.time()
 
@@ -89,7 +95,7 @@ new_comments = [
 logging.info('Preprocessing new comments...')
 start_time = time.time()
 
-new_comments = [preprocess_text(comment) for comment in new_comments]
+new_comments = [preprocess_text(comment, normalizer) for comment in new_comments]
 
 logging.info(f'New comments preprocessed in {time.time() - start_time:.2f} seconds.')
 
