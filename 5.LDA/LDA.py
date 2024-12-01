@@ -13,24 +13,23 @@ import arabic_reshaper
 import time
 from multiprocessing import Pool
 
-# Start the timer for execution timing
+# Start the timer
 start_time = time.time()
 
-# Load stopwords
 stopword_file = 'Stopwords_shokristop_words.txt'
 if not os.path.exists(stopword_file):
     raise FileNotFoundError(f"Stopword file '{stopword_file}' not found.")
 with open(stopword_file, 'r', encoding='utf-8') as file:
     stopwords = [word.strip() for word in file if word.strip()]
 
-# Text cleaning function to remove invalid or short comments
+
 def pre_clean_text(text):
     text = text.strip()  # Remove leading/trailing whitespace
-    if len(text.split()) < 3:  # Skip comments with fewer than 3 words
+    if len(text.split()) < 3:  # Skip very short comments
         return ""
     return text
 
-# Text preprocessing function: replaces characters, removes unwanted elements
+
 def preprocess_text(text):
     replacements = {
         'ی': 'ي',
@@ -46,9 +45,10 @@ def preprocess_text(text):
     words = [word for word in text.split() if word not in stopwords]
     return ' '.join(words)
 
-# Ensure DadmaTools models are available in the cache directory
+
 custom_models_dir = 'E:\\payan\\WORDPR\\dadma\\xlm-roberta-base'
 cache_dir = os.path.join(os.path.expanduser("~"), "cache", "dadmatools")
+
 
 def copy_model_if_not_exists(custom_dir, cache_subdir):
     if not os.path.exists(cache_subdir):
@@ -59,19 +59,20 @@ def copy_model_if_not_exists(custom_dir, cache_subdir):
         if os.path.isfile(custom_path) and not os.path.isfile(cache_path):
             shutil.copy(custom_path, cache_path)
 
+
 copy_model_if_not_exists(custom_models_dir, cache_dir)
 
-# Initialize DadmaTools pipeline
+# Initialize the DadmaTools pipeline
 pipelines = 'lem,chunk'
 nlp = language.Pipeline(pipelines=pipelines)
 
-# Read CSV file containing comments
+# Read CSV file and filter comments by sentiment
 csv_file = 'analysed_cm.csv'
 if not os.path.exists(csv_file):
     raise FileNotFoundError(f"CSV file '{csv_file}' not found.")
 df = pd.read_csv(csv_file)
 
-# Extract noun and adjective sequences using DadmaTools pipeline
+
 def extract_noun_adj_sequences(text):
     doc = nlp(text)
     noun_adj_sequences = []
@@ -89,10 +90,11 @@ def extract_noun_adj_sequences(text):
             noun_adj_sequences.append(' '.join(current_sequence))
     return noun_adj_sequences
 
-# Process comments for a specific sentiment
+
 def process_comments(sentiment, sample_fraction=1):
     try:
-        filtered_comments = df[df['Sentiment'] == sentiment]['comment'].dropna().sample(frac=sample_fraction, random_state=42)
+        filtered_comments = df[df['Sentiment'] == sentiment]['comment'].dropna().sample(frac=sample_fraction,
+                                                                                        random_state=42)
         processed_comments = []
         for comment in filtered_comments:
             cleaned_comment = pre_clean_text(comment)
@@ -107,12 +109,12 @@ def process_comments(sentiment, sample_fraction=1):
         print(f"Error processing comments for sentiment '{sentiment}': {e}")
         return []
 
-# Perform LDA topic modeling
-def perform_lda(comments, num_topics=6, max_iter=5000):
+
+def perform_lda(comments, num_topics=7, max_iter=10000):
     vectorizer = CountVectorizer(
-        max_df=0.6,
+        max_df=0.8,
         min_df=max(2, len(comments) // 50),
-        ngram_range=(1, 2),
+        ngram_range=(1,3),
         stop_words=stopwords,
     )
     dtm = vectorizer.fit_transform(comments)
@@ -128,15 +130,14 @@ def perform_lda(comments, num_topics=6, max_iter=5000):
     lda.fit(dtm)
     return lda, vectorizer
 
-# Retrieve topic names and their importance
-def get_topic_names_and_importance(model, feature_names, no_top_words=10):
+
+def get_topic_names_and_importance(model, feature_names, no_top_words=9):
     topics = {}
     for topic_idx, topic in enumerate(model.components_):
         topic_words = [feature_names[i] for i in topic.argsort()[:-no_top_words - 1:-1]]
         topics[' '.join(topic_words)] = topic.sum()
     return topics
 
-# Process comments and apply LDA
 def process_and_lda(sentiment):
     comments = process_comments(sentiment)
     lda, vectorizer = perform_lda(comments)
@@ -145,15 +146,17 @@ def process_and_lda(sentiment):
         return topics
     return None
 
-# Main block for multiprocessing
+
+
 if __name__ == '__main__':
-    with Pool(processes=7) as pool:
+    # Use multiprocessing Pool to process comments and perform LDA in parallel
+    with Pool(processes=5) as pool:
         results = pool.map(process_and_lda, ['HAPPY', 'SAD'])
 
     happy_topics = results[0]
     sad_topics = results[1]
 
-    # Print and visualize topics for both sentiments
+    # Print the topics for both sentiments
     if happy_topics:
         print("\nHAPPY Topics:")
         for topic, importance in happy_topics.items():
@@ -183,12 +186,12 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.savefig("sad_topics_visual.png", dpi=300)
     plt.show()
-
-    # Save topics to an Excel file
+    #Save to excel
     with pd.ExcelWriter('output_topics.xlsx', engine='openpyxl') as writer:
         if happy_topics:
-            pd.DataFrame(happy_topics.items(), columns=['Topic', 'Importance']).to_excel(writer, sheet_name='HAPPY', index=False)
+            pd.DataFrame(happy_topics.items(), columns=['Topic', 'Importance']).to_excel(writer, sheet_name='HAPPY',
+                                                                                         index=False)
         if sad_topics:
-            pd.DataFrame(sad_topics.items(), columns=['Topic', 'Importance']).to_excel(writer, sheet_name='SAD', index=False)
-
+            pd.DataFrame(sad_topics.items(), columns=['Topic', 'Importance']).to_excel(writer, sheet_name='SAD',
+                                                                                       index=False)
     print("Execution completed in:", time.time() - start_time, "seconds")
